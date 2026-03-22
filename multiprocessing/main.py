@@ -4,6 +4,7 @@ import time
 import random
 import logging
 
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] (%(processName)-10s) %(message)s',
@@ -11,7 +12,6 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
 def init_global_scope():
     
@@ -41,6 +41,11 @@ def init_global_scope():
         "winner_lock": winner_lock,
     }
 
+def create_new_request(client_name):
+    return {
+        "id": f"REQ-{client_name}-{int(time.time())}",
+        "content": f"Task from {client_name}",
+    }
 
 def server_process(name, global_scope):
     logger.info(f"--- Server {name} is now on VIGIL ---")
@@ -70,40 +75,46 @@ def server_process(name, global_scope):
         else:
             logger.info(f"Server {name}: REJECTED Request {request_id} based on logic.")
 
-
-def client_process(name, global_scope, activation_event):
-    logger.info(f"--- Client {name} is DORMANT and waiting for activation ---")
+def gateway_process(gateway_queue, global_scope):
+    logger.info("Gateway is listening. Monitoring incoming queue...")
 
     while True:
-        # wait for activation
-        activation_event.wait()
+        request = gateway_queue.get() 
+        logger.info(f"Gateway: New request {request['id']} found. Resetting stage...")
 
-        logger.info(f"Client {name} woke up! Creating a request")
         global_scope['winner_ledger'].value = 'NONE'
 
-        # Create request
-        global_scope['request_slot'].id = f"REQ-{name}-{int(time.time())}"
-        global_scope['request_slot'].content = "Some task"
-
-
         with global_scope['broadcast']:
-            logger.info("Notifying all servers about the request...")
+            global_scope['request_slot'].id = request['id']
+            global_scope['request_slot'].content = request['content']
+            
+            logger.info(f"Gateway: broadcasting {request['id']} now!")
             global_scope['broadcast'].notify_all()
 
-        time.sleep(3)
         final_winner = global_scope['winner_ledger'].value
         if final_winner != "NONE":
-            logger.info(f"[Client {name}] SUCCESS: Request handled by {final_winner}")
+            logger.info(f"Gateway: {request['id']} was handled by {final_winner}")
         else:
-            logger.info(f"[Client {name}] FAILURE: No server accepted the request.")
+            logger.warning(f"Gateway: {request['id']} EXPIRED (No server accepted)")
 
+def client_process(client_id, gateway_queue, activation_event):
+    logger.info(f"Client {client_id} is dormant.")
+    
+    while True:
+        activation_event.wait()
+        
+        request = create_new_request(f"Client-{client_id}")
+        logger.info(f"Client {client_id}: Submitting {request['id']} to Gateway.")
+        
+        gateway_queue.put(request)
+        
         activation_event.clear()
-        logger.info(f"--- Client {name} is now DORMANT again ---\n")
-
+        logger.info(f"Client {client_id}: Returning to dormancy.")
 
 def master_process():
     global_scope = init_global_scope()
     logger.info("Global scope initialized")
+    gateway_queue = multiprocessing.Queue()
     
     number_of_servers = 3
 
@@ -113,13 +124,22 @@ def master_process():
         p.start()
     logger.info(f"Spawned all!")
 
+    logger.info("Spinning up the gateway")
+
+    multiprocessing.Process(
+        target=gateway_process, 
+        args=(gateway_queue, global_scope), 
+        name="Gateway", 
+        daemon=True
+    ).start()
+
     number_of_clients = 2
     client_triggers = {}
     logger.info(f"Spawning {number_of_clients} client processes")
     for i in range(number_of_clients):
         trigger = multiprocessing.Event()
         client_triggers[i] = trigger
-        p = multiprocessing.Process(target=client_process, args=(i, global_scope, trigger), daemon=True)
+        p = multiprocessing.Process(target=client_process, args=(i, gateway_queue, trigger), daemon=True)
         p.start()
 
     time.sleep(1) # let all spawn
@@ -139,7 +159,3 @@ def master_process():
 
 if __name__ == "__main__":
     master_process()
-    
-    
-    
-    
