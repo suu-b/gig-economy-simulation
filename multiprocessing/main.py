@@ -28,7 +28,34 @@ def create_new_request(client_name):
         "content": f"Task from {client_name}",
         "status": "pending", 
         "picked_up_by": None,
+        "timestamp": time.time()
     }
+
+def garbage_collector(global_scope):
+    TTL_SECONDS = 36000
+
+    while True:
+        time.sleep(60)
+
+        current_time = time.time()
+        keys_to_delete = []
+
+        for req_id, req_data in dict(global_scope['requests']).items():
+            is_processed = req_data['status'] == 'completed'
+            is_expired = (current_time - req_data['timestamp']) > TTL_SECONDS
+
+            if is_processed and is_expired:
+                keys_to_delete.append(req_id)
+
+        if keys_to_delete:
+            for req_id in keys_to_delete:
+                if req_id in global_scope['requests']:
+                    del global_scope['requests'][req_id]
+                    
+                if req_id in global_scope['request_locks']:
+                    del global_scope['request_locks'][req_id]
+            
+            logger.info(f"GC: Successfully cleared {len(keys_to_delete)} completed requests.")
 
 def server_process(name, global_scope):
     logger.info(f"--- Server {name} is now on VIGIL ---")
@@ -37,7 +64,10 @@ def server_process(name, global_scope):
         with global_scope['broadcast']:
             global_scope['broadcast'].wait()
 
-        current_keys = list(global_scope['requests'].keys())
+        current_keys = [
+            req_id for req_id, req_data in dict(global_scope['requests']).items() 
+            if req_data['status'] == 'pending'
+        ]
         
         for req_id in current_keys:
             req = global_scope['requests'][req_id]
@@ -71,7 +101,6 @@ def server_process(name, global_scope):
                         
                         logger.info(f"Server {name}: COMPLETED {req_id} after {process_time:.2f}s")
                         
-                        break 
                     else:
                         logger.info(f"Server {name}: Too slow for {req_id} (already taken)")
             else:
@@ -124,6 +153,14 @@ def master_process():
         target=gateway_process, 
         args=(gateway_queue, global_scope), 
         name="Gateway", 
+        daemon=True
+    ).start()
+
+    logger.info("Spinning up the garbage collector")
+    multiprocessing.Process(
+        target=garbage_collector,
+        args=(global_scope,),
+        name="GarbageCollector",
         daemon=True
     ).start()
 
