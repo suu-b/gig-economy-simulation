@@ -27,10 +27,14 @@ EXPIRED: Expired -- EOL.
 
 # Vision Board
 
-v0.2
+v0.3
 
-1. Define a request lifecycle.
-2. Let multiple clients create requests at one single time, pass them all through a buffer queue that pushes one request at a time in the system
+1. Redis Integration
+
+~~v0.2~~
+
+~~ 1. Define a request lifecycle.~~
+~~ 2. Let multiple clients create requests at one single time, pass them all through a buffer queue that pushes one request at a time in the system~~
 
 ~~v0.1~~
 
