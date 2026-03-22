@@ -1,0 +1,44 @@
+import redis
+import logging
+from typing import Callable
+from models import App_Channels, Request
+
+from request_lifecycle import Status
+
+class RedisClient:
+    def __init__(self, channels: App_Channels, host: str = 'localhost', port: int = 6379):
+        self.instance = redis.Redis(host=host, port=port, decode_responses=True)
+        self.channels = channels
+        self.logger = logging.getLogger(__name__)
+        self._pubsub = self.instance.pubsub()
+
+    def pub_request(self, request: Request):
+        channel = self.channels.request_channel 
+        self.instance.publish(channel, request.model_dump_json())
+        self.logger.info(f"Published {request.id} to {channel}")
+
+    def start_listening(self, callback: Callable[[dict], None]):
+        channel = self.channels.request_channel
+        self._pubsub.subscribe(channel)
+
+        for message in self._pubsub.listen():
+            if message["type"] == "message":
+                callback(message)
+
+    def create_request_hash(self, request: Request, expirytime: int):
+        key = f"request_data:{request.id}"
+        self.instance.hset(key, mapping={
+            "id": request.id,
+            "content": request.content,
+            "status": Status.PENDING.value,
+            "timestamp": request.timestamp
+        })
+        self.instance.expire(key, expirytime)
+
+    def update_request_hash(self, request_id: str, data: dict):
+        key = f"request_data:{request_id}"
+        self.instance.hset(key, mapping=data)
+
+    def create_claim(self, request_id: str, name: str):
+        key = f"claim:{request_id}"
+        self.instance.set(key, name, nx=True, ex=60)
