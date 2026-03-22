@@ -14,37 +14,20 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 def init_global_scope():
-    
-    # The global scope
     manager = multiprocessing.Manager()
-
-    # The request namespace
-    request_slot = manager.Namespace()
-    request_slot.id = None
-    request_slot.content = None
-
-    # Winner Ledger
-    # No one has won yet
-    winner_ledger = manager.Value('u', "NONE")
-
-    # Condition that allows servers to sleep until a request arrives
-    broadcast = manager.Condition()
-
-    # Winner lock to prevent race
-    winner_lock = manager.Lock()
-
     return {
         "manager": manager,
-        "request_slot": request_slot,
-        "winner_ledger": winner_ledger,
-        "broadcast": broadcast,
-        "winner_lock": winner_lock,
+        "requests": manager.dict(),      
+        "request_locks": manager.dict(),
+        "broadcast": manager.Condition(),
     }
 
 def create_new_request(client_name):
     return {
         "id": f"REQ-{client_name}-{int(time.time())}",
         "content": f"Task from {client_name}",
+        "status": "pending", 
+        "picked_up_by": None,
     }
 
 def server_process(name, global_scope):
@@ -53,49 +36,60 @@ def server_process(name, global_scope):
     while True:
         with global_scope['broadcast']:
             global_scope['broadcast'].wait()
+
+        current_keys = list(global_scope['requests'].keys())
         
-        request_id = global_scope['request_slot'].id
+        for req_id in current_keys:
+            req = global_scope['requests'][req_id]
 
-        # The server decides either to take it or not to take it
-        decision = random.choice([0,1])
-        logger.info(f"Server {name}: Woke up for Request {request_id}. Decision: {decision}")
+            if req['status'] == 'picked_up':
+                continue
+    
+            decision = random.choice([0, 1])
+            if decision == 1:
+                delay = random.uniform(1, 2)
+                time.sleep(delay)
 
-        if decision == 1:
-            delay = random.uniform(1, 2)
-            time.sleep(delay)
-
-            # Race to accept the request
-            with global_scope['winner_lock']:
-                if global_scope['winner_ledger'].value == 'NONE':
-                    global_scope['winner_ledger'].value = name
-                    logger.info(f"*** Server {name}: ACCEPTED Request {request_id} first! ***")
-                else:
-                    current_winner = global_scope['winner_ledger'].value 
-                    logger.info(f"Server {name}: EXPIRED (Request {request_id} already taken by {current_winner})")
-        else:
-            logger.info(f"Server {name}: REJECTED Request {request_id} based on logic.")
+                with global_scope['request_locks'][req_id]:
+                    req = global_scope['requests'][req_id]
+                    
+                    if req['status'] == 'pending':
+                        local_copy = req.copy()
+                        local_copy['status'] = 'picked_up'
+                        local_copy['picked_up_by'] = name
+                        
+                        global_scope['requests'][req_id] = local_copy
+                        
+                        logger.info(f"*** Server {name}: CLAIMED {req_id}! ***")
+                        
+                        process_time = random.uniform(1, 3)
+                        time.sleep(process_time)
+                        
+                        completed_copy = local_copy.copy()
+                        completed_copy['status'] = 'completed'
+                        global_scope['requests'][req_id] = completed_copy
+                        
+                        logger.info(f"Server {name}: COMPLETED {req_id} after {process_time:.2f}s")
+                        
+                        break 
+                    else:
+                        logger.info(f"Server {name}: Too slow for {req_id} (already taken)")
+            else:
+                logger.info(f"Server {name}: Decided to skip {req_id}")
 
 def gateway_process(gateway_queue, global_scope):
-    logger.info("Gateway is listening. Monitoring incoming queue...")
+    logger.info("Gateway is listening...")
 
     while True:
         request = gateway_queue.get() 
-        logger.info(f"Gateway: New request {request['id']} found. Resetting stage...")
+        req_id = request['id']
+        logger.info(f"Gateway: Posting {request['id']} to the board.")
 
-        global_scope['winner_ledger'].value = 'NONE'
+        global_scope['request_locks'][req_id] = global_scope['manager'].Lock()
+        global_scope['requests'][req_id] = request
 
         with global_scope['broadcast']:
-            global_scope['request_slot'].id = request['id']
-            global_scope['request_slot'].content = request['content']
-            
-            logger.info(f"Gateway: broadcasting {request['id']} now!")
             global_scope['broadcast'].notify_all()
-
-        final_winner = global_scope['winner_ledger'].value
-        if final_winner != "NONE":
-            logger.info(f"Gateway: {request['id']} was handled by {final_winner}")
-        else:
-            logger.warning(f"Gateway: {request['id']} EXPIRED (No server accepted)")
 
 def client_process(client_id, gateway_queue, activation_event):
     logger.info(f"Client {client_id} is dormant.")
