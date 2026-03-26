@@ -4,7 +4,6 @@ import argparse
 import multiprocessing
 
 from models import App_Channels
-from gateway import Gateway
 from server import Server
 
 logging.basicConfig(
@@ -28,14 +27,7 @@ class System:
         }
 
         self._queue = multiprocessing.Queue()
-        self._channels = App_Channels(request_channel="broadcast:requests")
-        self.gateway_queue = Gateway(self._redis_config, self._channels, self._queue)
-
-        self._logger.info("Spinning up gateway..")
-        multiprocessing.Process(
-            target=self.gateway_queue.run,
-            name = "gateway_queue"
-        ).start()        
+        self._channels = App_Channels(request_channel="broadcast:requests")        
 
         self._logger.info("Spinning up servers..")
         for i in range(total_servers):
