@@ -1,4 +1,11 @@
 import logging
+import sys
+import random
+import time
+import json
+
+from redis_client import RedisClient
+from request_lifecycle import Status
 
 logging.basicConfig(
     level=logging.INFO,
@@ -8,32 +15,38 @@ logging.basicConfig(
 )
 
 class Server:
-    def __init__(self, name, redis_client):
+    def __init__(self, name, redis_config: dict, channels):
         self.name = name
         self._logger = logging.getLogger(__name__)
-        self._redis_client = redis_client
+
+        self._redis_client = RedisClient(
+            channels=channels,
+            **redis_config
+        )
 
     def start(self):
-        self._redis_client.start_listening(callback=self._handle_incoming_request)
+        self._redis_client.start_listening(
+            callback=self._handle_incoming_request
+        )
 
     def _handle_incoming_request(self, message):
-        req_id = message['data']
+        request = json.loads(message['data'])
+        req_id = request['id']
         
         if random.choice([0, 1]) == 0:
-            logger.info(f"Server {self.name}: Ignoring {req_id}")
+            self._logger.info(f"Server {self.name}: Ignoring {req_id}")
             return
 
-        logger.info(f"Server {self.name}: Interested in {req_id}. Processing...")
-        time.sleep(random.uniform(0.5, 1.5)) # Simulate some "thinking" time
+        self._logger.info(f"Server {self.name}: Interested in {req_id}. Processing...")
+        time.sleep(random.uniform(0.5, 1.5))
 
-        if self._redis.create_claim(req_id, self.name):
-            logger.info(f"*** Server {self.name}: WON THE RACE for {req_id}! ***")
+        if self._redis_client.create_claim(req_id, self.name):
+            self._logger.info(f"*** Server {self.name}: WON THE RACE for {req_id}! ***")
         
             update_data = {
                 "status": Status.PICKED_UP.value,
                 "picked_up_by": self.name
             }
-            self._redis.update_request_hash(req_id, update_data)
+            self._redis_client.update_request_hash(req_id, update_data)
         else:
-            logger.info(f"Server {self.name}: LOST. Request taken other server")
-
+            self._logger.info(f"Server {self.name}: LOST. Request taken by another server")

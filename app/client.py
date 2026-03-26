@@ -1,30 +1,27 @@
-import logging
-from models import Request
-from request_lifecycle import Status
+import requests
+import time
 import uuid
 
-logger = logging.getLogger(__name__)
+API_URL = "http://localhost:8000/request"
 
-class Client:
-    def __init__(self, client_id: str, gateway, activation_event):
-        self.client_id = client_id
-        self.gateway = gateway
-        self.activation_event = activation_event
+def create_request():
+    return {
+        "id": f"REQ-{uuid.uuid4()}",
+        "content": "some work to be done",
+        "timestamp": time.time()
+    }
 
-    def start_loop(self):
-        logger.info(f"CLIENT START: {self.client_id} is dormant and waiting...")
-        
-        while True:
-            self.activation_event.wait()
-            new_request = self._create_request()
-            logger.info(f"{self.client_id}: Submitting {new_request.id} to Gateway.")
-            self.gateway.post_request(new_request)
-            
-            self.activation_event.clear()
-            logger.info(f"{self.client_id}: Returning to dormancy.")
+def main():
+    while True:
+        req = create_request()
+        try:
+            res = requests.post(API_URL, json=req)
+            print(f"Sent {req['id']} | Status: {res.status_code}")
+        except Exception as e:
+            print(f"Failed to send request: {e}")
 
-    def _create_request(self) -> Request:
-        return Request(
-            id=f"REQ-{uuid.uuid4().hex[:6].upper()}",
-            content=f"Payload from {self.client_id}",
-        )
+        time.sleep(2)
+
+
+if __name__ == "__main__":
+    main()

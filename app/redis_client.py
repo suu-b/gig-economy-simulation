@@ -2,8 +2,18 @@ import redis
 import logging
 from typing import Callable
 from models import App_Channels, Request
+import sys
 
 from request_lifecycle import Status
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] (%(processName)-10s) %(message)s',
+    datefmt='%H:%M:%S',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+
 
 class RedisClient:
     def __init__(self, channels: App_Channels, host: str = 'localhost', port: int = 6379):
@@ -41,4 +51,4 @@ class RedisClient:
 
     def create_claim(self, request_id: str, name: str):
         key = f"claim:{request_id}"
-        self.instance.set(key, name, nx=True, ex=60)
+        return self.instance.set(key, name, nx=True, ex=60)

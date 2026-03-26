@@ -1,12 +1,11 @@
-import multiprocessing
 import sys
-import time
-import random
 import logging
-import redis
+import argparse
+import multiprocessing
 
-from models import App_Channels, Request
-from redis_client import RedisClient
+from models import App_Channels
+from gateway import Gateway
+from server import Server
 
 logging.basicConfig(
     level=logging.INFO,
@@ -15,17 +14,49 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 
+def run_server(name, redis_config, channels):
+    server = Server(name, redis_config, channels)
+    server.start()
+
 
 class System:
-    def __init__(self):
-        # Redis client params
-        host = 'localhost'
-        port = 6379
-        channels = App_Channels(request_channel="broadcast:requests")
+    def __init__(self, total_servers: int):
+        self._logger = logging.getLogger(__name__)
+        self._redis_config = {
+            "host": "localhost",
+            "port": 6379
+        }
 
-        self.redis_client = RedisClient(channels=channels, host=host, port=port,decode_responses=True)
-        self.logger = logging.getLogger(__name__)
+        self._queue = multiprocessing.Queue()
+        self._channels = App_Channels(request_channel="broadcast:requests")
+        self.gateway_queue = Gateway(self._redis_config, self._channels, self._queue)
 
-        
+        self._logger.info("Spinning up gateway..")
+        multiprocessing.Process(
+            target=self.gateway_queue.run,
+            name = "gateway_queue"
+        ).start()        
 
-        
+        self._logger.info("Spinning up servers..")
+        for i in range(total_servers):
+            server_name = f"server_{i}"
+            multiprocessing.Process(
+                target=run_server,
+                args=(server_name, self._redis_config, self._channels),
+                name=server_name
+            ).start()
+            self._logger.info(f"Server {server_name} initialized successfully..")
+
+        self._logger.info("Successfully initialized system!")
+    
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--servers", type=int, required=True) 
+
+    args = parser.parse_args()
+    System(args.servers)
+
+
+if __name__ == '__main__':
+    main()
