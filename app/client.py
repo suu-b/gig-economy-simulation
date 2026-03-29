@@ -8,6 +8,7 @@ BASE_URL = "http://localhost:8000"
 def create_request():
     return {
         "id": f"REQ-{uuid.uuid4()}",
+        "client_id": f"CLIENT-{uuid.uuid4()}",
         "content": "some work to be done",
         "timestamp": time.time()
     }
@@ -15,7 +16,7 @@ def create_request():
 def stream_updates(request_id):
     url = f"{BASE_URL}/stream/{request_id}"
 
-    with requests.post(url, stream=True) as r:
+    with requests.get(url, stream=True) as r:
         for line in r.iter_lines():
             if not line:
                 continue

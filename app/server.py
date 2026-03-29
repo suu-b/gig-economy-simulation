@@ -69,6 +69,14 @@ class Server:
                 "event": "completed",
                 "server": self.name
             })
+
+            self._redis_client.update_request_hash(req_id, {
+                "status": Status.COMPLETED.value,
+                "completed_at": time.time(),
+                "duration": f"{duration}s"
+            })
+
+            self._redis_client.instance.lpush("requests:completed", req_id)
             
         else:
             self._logger.info(f"Server {self.name}: LOST. Request taken by another server")

@@ -1,0 +1,60 @@
+body {
+  font-family: Arial;
+  background: #f8f7fc;
+  margin: 0;
+}
+
+.container {
+  width: 80%;
+  margin: 40px auto;
+  background: white;
+  padding: 20px;
+  border: 1px solid #ddd;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+button {
+  background: #6a0dad;
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  cursor: pointer;
+}
+
+button.secondary {
+  background: #bbb;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+}
+
+th, td {
+  padding: 10px;
+  border: 1px solid #ddd;
+}
+
+tr:nth-child(even) {
+  background: #f1edfb;
+}
+
+input {
+  width: 100%;
+  padding: 10px;
+  margin-top: 10px;
+}
+
+.logs {
+  margin-top: 20px;
+  height: 200px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  padding: 10px;
+}

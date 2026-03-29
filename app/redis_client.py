@@ -40,9 +40,11 @@ class RedisClient:
         key = f"request_data:{request.id}"
         self.instance.hset(key, mapping={
             "id": request.id,
+            "client_id": request.client_id,
             "content": request.content,
             "status": Status.PENDING.value,
-            "timestamp": request.timestamp
+            "created_at": request.timestamp,
+            "duration": f"{0}s"
         })
         self.instance.expire(key, expirytime)
 

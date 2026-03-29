@@ -31,7 +31,7 @@ class System:
 
         self._logger.info("Spinning up servers..")
         for i in range(total_servers):
-            server_name = f"server_{i}"
+            server_name = f"SERV-{i}"
             multiprocessing.Process(
                 target=run_server,
                 args=(server_name, self._redis_config, self._channels),

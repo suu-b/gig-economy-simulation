@@ -6,6 +6,7 @@ from request_lifecycle import Status
 
 class Request(BaseModel):
     id: str
+    client_id: str
     content: str
     status: Status = Status.CREATED
     timestamp: float = Field(default_factory=time.time)
