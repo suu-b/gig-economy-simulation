@@ -48,5 +48,27 @@ class Server:
                 "picked_up_by": self.name
             }
             self._redis_client.update_request_hash(req_id, update_data)
+
+            # Once updated, now we need to do some progress on the task
+            duration = random.randint(20, 25)
+            self._redis_client.publish_progress(req_id, {
+                "event": "picked_up",
+                "server": self.name
+            })
+
+            for i in range(duration):
+                time.sleep(1)
+                self._redis_client.publish_progress(req_id, {
+                    "event": "progress",
+                    "server": self.name,
+                    "step": i + 1,
+                    "total": duration
+                })
+
+            self._redis_client.publish_progress(req_id, {
+                "event": "completed",
+                "server": self.name
+            })
+            
         else:
             self._logger.info(f"Server {self.name}: LOST. Request taken by another server")

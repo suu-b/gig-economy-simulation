@@ -1,8 +1,9 @@
 import requests
 import time
 import uuid
+import json
 
-API_URL = "http://localhost:8000/request"
+BASE_URL = "http://localhost:8000"
 
 def create_request():
     return {
@@ -11,16 +12,44 @@ def create_request():
         "timestamp": time.time()
     }
 
-def main():
-    while True:
-        req = create_request()
-        try:
-            res = requests.post(API_URL, json=req)
-            print(f"Sent {req['id']} | Status: {res.status_code}")
-        except Exception as e:
-            print(f"Failed to send request: {e}")
+def stream_updates(request_id):
+    url = f"{BASE_URL}/stream/{request_id}"
 
-        time.sleep(2)
+    with requests.post(url, stream=True) as r:
+        for line in r.iter_lines():
+            if not line:
+                continue
+
+            decoded = line.decode()
+
+            if decoded.startswith("data: "):
+                payload = decoded.replace("data: ", "", 1)
+
+                try:
+                    data = json.loads(payload)
+                except:
+                    print(f"[{request_id}] RAW:", payload)
+                    continue
+
+                print(f"[{request_id}] {data}")
+
+                if data.get("event") == "completed":
+                    print(f"[{request_id}] DONE")
+                    break
+
+
+def main():
+    req = create_request()
+
+    try:
+        res = requests.post(f"{BASE_URL}/request", json=req)
+        data = res.json()
+        request_id = data["request_id"]
+        print(f"Submitted {request_id}")
+        stream_updates(request_id)
+
+    except Exception as e:
+        print(f"Error: {e}")
 
 
 if __name__ == "__main__":

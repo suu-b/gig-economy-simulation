@@ -3,6 +3,7 @@ import logging
 from typing import Callable
 from models import App_Channels, Request
 import sys
+import json
 
 from request_lifecycle import Status
 
@@ -52,3 +53,7 @@ class RedisClient:
     def create_claim(self, request_id: str, name: str):
         key = f"claim:{request_id}"
         return self.instance.set(key, name, nx=True, ex=60)
+    
+    def publish_progress(self, request_id: str, data: dict):
+        channel = f"progress:{request_id}"
+        self.instance.publish(channel, json.dumps(data))
