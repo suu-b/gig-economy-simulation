@@ -59,3 +59,31 @@ class RedisClient:
     def publish_progress(self, request_id: str, data: dict):
         channel = f"progress:{request_id}"
         self.instance.publish(channel, json.dumps(data))
+
+    def stream_progress(self, request_id: str):
+        pubsub = self.instance.pubsub()
+        pubsub.subscribe(f"progress:{request_id}")
+
+        try:
+            for message in pubsub.listen():
+                if message['type'] != 'message':
+                    continue
+                
+                data = message['data']
+                self.logger.info(f"Stream payload for {request_id}: {data}")
+                yield f"data: {data}\n\n"
+        finally:
+            pubsub.close()
+
+    def get_completed_requests(self, limit: int = 20):
+        ids = self.instance.lrange("requests:completed", 0, limit - 1)
+        self.logger.info(f"Retrieved {len(ids)} completed request IDs")
+
+        results = []
+        for req_id in ids:
+            data = self.instance.hgetall(f"request_data:{req_id}")
+            if not data:
+                continue
+            results.append(data)
+
+        return results

@@ -39,37 +39,15 @@ def create_request(req: Request):
 
 @app.get("/stream/{request_id}")
 def stream(request_id: str):
-    def event_stream():
-        pubsub = redis_client.instance.pubsub()
-        pubsub.subscribe(f"progress:{request_id}")
-
-        try:
-            for message in pubsub.listen():
-                if message['type'] != 'message':
-                    continue
-                
-                data = message['data']
-                logger.info(f"Stream payload for {request_id}: {data}")
-                yield f"data: {data}\n\n"
-        finally:
-            pubsub.close()
-
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    return StreamingResponse(redis_client.stream_progress(request_id), media_type="text/event-stream")
 
 @app.get("/history")
-def get_history(limit: int = 20):
+def get_history(limit: int = 100):
     logger.info(f"Fetching history with limit: {limit}")
-    ids = redis_client.instance.lrange("requests:completed", 0, limit - 1)
-    logger.info(f"Retrieved {len(ids)} completed request IDs")
+    requests_data = redis_client.get_completed_requests(limit)
 
     results = []
-    # ignore if pylance throws error here
-    for req_id in ids:
-        data =  redis_client.instance.hgetall(f"request_data:{req_id}")
-
-        if not data:
-            continue
-
+    for data in requests_data:
         result_item = {
             "request_id": data.get("id"),
             "client_id": data.get("client_id"),
